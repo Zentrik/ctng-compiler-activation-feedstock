@@ -57,8 +57,16 @@ fi
 
 # The compiler adds ${PREFIX}/lib to rpath, so it's better to add -L and -isystem  as well.
 if [ "${CONDA_BUILD:-0}" = "1" ]; then
-  CFLAGS_USED="@CFLAGS@ -fno-merge-constants -isystem ${PREFIX}@LIBRARY_PREFIX@/include -fdebug-prefix-map=${SRC_DIR}=/usr/local/src/conda/${PKG_NAME}-${PKG_VERSION} -fdebug-prefix-map=${PREFIX}=/usr/local/src/conda-prefix"
-  DEBUG_CFLAGS_USED="@DEBUG_CFLAGS@ -fno-merge-constants -isystem ${PREFIX}@LIBRARY_PREFIX@/include -fdebug-prefix-map=${SRC_DIR}=/usr/local/src/conda/${PKG_NAME}-${PKG_VERSION} -fdebug-prefix-map=${PREFIX}=/usr/local/src/conda-prefix"
+  # -ffile-prefix-map rewrites __FILE__ as well as debug info (-fdebug-prefix-map only did
+  # debug info). A map is only added when its directory is set, since an empty old prefix
+  # matches every path, and $BUILD_PREFIX is skipped when it is $PREFIX (merged envs).
+  _CONDA_PREFIX_MAP="${SRC_DIR:+-ffile-prefix-map=${SRC_DIR}=/usr/local/src/conda/${PKG_NAME}-${PKG_VERSION} }${PREFIX:+-ffile-prefix-map=${PREFIX}=/usr/local/src/conda-prefix}"
+  if [ -n "${BUILD_PREFIX:-}" ] && [ "${BUILD_PREFIX}" != "${PREFIX:-}" ]; then
+    _CONDA_PREFIX_MAP="-ffile-prefix-map=${BUILD_PREFIX}=/usr/local/src/conda-build-prefix ${_CONDA_PREFIX_MAP}"
+  fi
+  CFLAGS_USED="@CFLAGS@ -fno-merge-constants -isystem ${PREFIX}@LIBRARY_PREFIX@/include ${_CONDA_PREFIX_MAP}"
+  DEBUG_CFLAGS_USED="@DEBUG_CFLAGS@ -fno-merge-constants -isystem ${PREFIX}@LIBRARY_PREFIX@/include ${_CONDA_PREFIX_MAP}"
+  unset _CONDA_PREFIX_MAP
   # shellcheck disable=SC2050 # templating will fix this error
   if [ "@CMAKE_SYSTEM_NAME@" = "Linux" ]; then
     LDFLAGS_USED="@LDFLAGS@ -Wl,-rpath,${PREFIX}@LIBRARY_PREFIX@/lib -Wl,-rpath-link,${PREFIX}@LIBRARY_PREFIX@/lib -L${PREFIX}@LIBRARY_PREFIX@/lib"
